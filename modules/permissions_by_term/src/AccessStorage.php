@@ -2,9 +2,9 @@
 
 namespace Drupal\permissions_by_term;
 
-use \Drupal\Core\Database\Driver\mysql\Connection;
-use \Drupal\Component\Utility\Tags;
-use \Drupal\Core\Form\FormState;
+use Drupal\Core\Database\Driver\mysql\Connection;
+use Drupal\Component\Utility\Tags;
+use Drupal\Core\Form\FormState;
 
 /**
  * Class AccessStorage.
@@ -64,7 +64,7 @@ class AccessStorage implements AccessStorageInterface {
    * @return array
    *   An array with chosen roles.
    */
-  protected function getSubmittedRolesGrantedAccess(FormState $form_state) {
+  public function getSubmittedRolesGrantedAccess(FormState $form_state) {
     $aRoles       = $form_state->getValue('access')['role'];
     $aChosenRoles = array();
     foreach ($aRoles as $sRole) {
@@ -225,7 +225,7 @@ class AccessStorage implements AccessStorageInterface {
    * @return array
    *   The user ids which have been submitted.
    */
-  protected function getSubmittedUserIds() {
+  public function getSubmittedUserIds() {
     /* There's a $this->oFormState->getValues() method, but
      * it is loosing multiple form values. Don't know why.
      * So there're some custom lines on the $_REQUEST array. */
@@ -395,6 +395,101 @@ class AccessStorage implements AccessStorageInterface {
     }
 
     return $sUserInfos;
+  }
+
+  /**
+   * @return array
+   */
+  public function getAllNids()
+  {
+    $query = $this->oDatabase->select('node', 'n')
+        ->fields('n', ['nid']);
+
+    return $query->execute()
+        ->fetchCol();
+  }
+
+  public function getTidsByNid($nid)
+  {
+    $node = $this->entityManager->getStorage('node')->load($nid);
+    $tids = [];
+
+    foreach ($node->getFields() as $field) {
+      if ($field->getFieldDefinition()->getType() == 'entity_reference' && $field->getFieldDefinition()->getSetting('target_type') == 'taxonomy_term') {
+        $aReferencedTaxonomyTerms = $field->getValue();
+        if (!empty($aReferencedTaxonomyTerms)) {
+          foreach ($aReferencedTaxonomyTerms as $aReferencedTerm) {
+            if (isset($aReferencedTerm['target_id'])) {
+              $tids[] = $aReferencedTerm['target_id'];
+            }
+          }
+        }
+      }
+    }
+
+    return $tids;
+  }
+
+  public function getAllUids()
+  {
+    $nodes = \Drupal::entityQuery('user')
+      ->execute();
+
+    return array_values($nodes);
+  }
+
+  public function getNodeType($nid)
+  {
+    $query = $this->oDatabase->select('node', 'n')
+      ->fields('n', ['type'])
+      ->condition('n.nid', $nid);
+
+    return $query->execute()
+      ->fetchAssoc()['type'];
+  }
+
+  public function getLangCode($nid)
+  {
+    $query = $this->oDatabase->select('node', 'n')
+      ->fields('n', ['langcode'])
+      ->condition('n.nid', $nid);
+
+    return $query->execute()
+      ->fetchAssoc()['langcode'];
+  }
+
+  public function getGidsByRealm($realm)
+  {
+    $query = $this->oDatabase->select('node_access', 'na')
+      ->fields('na', ['gid'])
+      ->condition('na.realm', $realm);
+
+    $gids = $query->execute()->fetchCol();
+
+    foreach ($gids as $gid) {
+      $grants[$realm][] = $gid;
+    }
+
+    return $grants;
+  }
+
+  public function getAllNidsUserCanAccess($uid)
+  {
+    $query = $this->oDatabase->select('node_access', 'na')
+      ->fields('na', ['nid'])
+      ->condition('na.realm', 'permissions_by_term__uid_' . $uid);
+
+    return $query->execute()
+      ->fetchCol();
+  }
+
+  public function getNidsByTid($tid)
+  {
+      $query = $this->oDatabase->select('taxonomy_index', 'ti')
+        ->fields('ti', ['nid'])
+        ->condition('ti.tid', $tid);
+
+      return $query->execute()->fetchCol();
   }
 
 }
